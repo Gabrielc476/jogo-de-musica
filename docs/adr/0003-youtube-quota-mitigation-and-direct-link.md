@@ -1,0 +1,3 @@
+# Mitigação de Cota da API do YouTube e Suporte a Link Direto
+
+A API oficial do YouTube Data v3 impõe cotas rigorosas (100 unidades por busca textual em um teto gratuito de 10.000 unidades/dia), inviabilizando buscas frequentes durante partidas longas. Decidimos suportar a resolução imediata por Link Direto ou ID de vídeo (sem chamada de busca), caching agressivo em memória LRU por termo pesquisado, submissão estrita por botão/Enter (sem busca ao digitar) e integração com o pacote `yt-search` como mecanismo de busca de cota zero. Isso elimina o consumo excessivo de cotas no Google Cloud e permite que o jogo funcione perfeitamente com link direto ou busca orgânica.

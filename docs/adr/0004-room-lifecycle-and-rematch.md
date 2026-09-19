@@ -1,0 +1,3 @@
+# Ciclo de Vida da Sala e Revanche Contínua
+
+Ao término do número máximo de rodadas de uma partida (`GAME_OVER`), exigir que os participantes se desconectem e criem uma nova sala gera atrito e perda de jogadores no ambiente presencial. Decidimos manter a integridade da Sala e dos sockets conectados após a exibição do Pódio, disponibilizando uma ação de "Revanche" exclusiva para o Anfitrião que reseta a pontuação acumulada e reinicia a partida imediatamente a partir do estado `MASTER_CHOOSING`, mantendo o mesmo PIN e o pareamento da Caixa de Som. Essa abordagem preserva o engajamento da festa, evita reinserções repetitivas de PIN e estabiliza as conexões WebSocket.

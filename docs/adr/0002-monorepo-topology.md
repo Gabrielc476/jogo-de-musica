@@ -1,0 +1,3 @@
+# Estrutura em Monorepo com Client e Server Desacoplados
+
+A execução simultânea de Next.js com WebSockets bidirecionais stateful (Socket.io) em um mesmo processo Node frequentemente gera conflitos de ciclo de vida e re-renderizações indevidas no ambiente de desenvolvimento. Decidimos organizar o projeto como um monorepo limpo com pastas independentes `client/` (Next.js 15, Tailwind, Socket.io-client) e `server/` (Node.js, TypeScript, Fastify, Socket.io), orquestradas por um script raiz via `concurrently`. Essa separação garante previsibilidade de build, isolamento total de tipos de servidor e cliente, e facilidade para testar os motores de pontuação e pareamento sem carregar o Next.js.
