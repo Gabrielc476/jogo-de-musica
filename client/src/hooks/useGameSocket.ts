@@ -36,11 +36,31 @@ export function useGameSocket() {
     }, 2800);
   }, []);
 
+  const [isMissingServerUrl, setIsMissingServerUrl] = useState(false);
+
   useEffect(() => {
-    // Determina o endereço do backend (variável de produção ou localhost)
-    const serverUrl =
-      process.env.NEXT_PUBLIC_SERVER_URL ||
-      `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:3001`;
+    let configuredUrl = process.env.NEXT_PUBLIC_SERVER_URL?.trim();
+    const isProd =
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1';
+
+    if (!configuredUrl && isProd) {
+      setIsMissingServerUrl(true);
+    }
+
+    let serverUrl: string;
+    if (configuredUrl) {
+      serverUrl = configuredUrl.replace(/\/+$/, '');
+      // Se a página estiver em HTTPS e a URL começar com http://, eleva para https:// contra Mixed Content
+      if (typeof window !== 'undefined' && window.location.protocol === 'https:' && serverUrl.startsWith('http://')) {
+        serverUrl = serverUrl.replace(/^http:\/\//, 'https://');
+      }
+    } else {
+      const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https:' : 'http:';
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+      serverUrl = `${protocol}//${hostname}:3001`;
+    }
 
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(serverUrl, {
       transports: ['websocket', 'polling'],
@@ -157,6 +177,7 @@ export function useGameSocket() {
 
   return {
     connected,
+    isMissingServerUrl,
     socketId,
     room,
     currentPlayer,

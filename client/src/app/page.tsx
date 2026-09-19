@@ -11,6 +11,7 @@ import { AudioSpeakerPlayer } from '../components/AudioSpeakerPlayer';
 export default function Home() {
   const {
     connected,
+    isMissingServerUrl,
     room,
     currentPlayer,
     lastResults,
@@ -47,6 +48,18 @@ export default function Home() {
         {/* Luz ambiente suave */}
         <div className="absolute inset-0 glow-warm pointer-events-none"></div>
         <div className="absolute inset-0 glow-cool pointer-events-none"></div>
+
+        {/* Aviso de Configuração Pendente em Produção */}
+        {isMissingServerUrl && (
+          <div className="relative z-20 mb-3 p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs shadow-lg">
+            <div className="font-bold mb-1 flex items-center gap-1.5">
+              <span>⚠️</span> Backend não configurado na Vercel
+            </div>
+            <p className="text-[11px] text-zinc-300 leading-relaxed">
+              Adicione a variável de ambiente <code className="bg-black/40 px-1 py-0.5 rounded text-amber-200 font-mono">NEXT_PUBLIC_SERVER_URL</code> nas configurações do projeto na Vercel com a URL HTTPS do seu backend (ex: Render ou Railway).
+            </p>
+          </div>
+        )}
 
         {/* Topo do Aplicativo quando em sala */}
         {room && (
