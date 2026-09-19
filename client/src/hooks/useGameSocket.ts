@@ -37,9 +37,10 @@ export function useGameSocket() {
   }, []);
 
   useEffect(() => {
-    // Determina o endereço do backend com base no hostname atual
-    const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const serverUrl = `http://${hostname}:3001`;
+    // Determina o endereço do backend (variável de produção ou localhost)
+    const serverUrl =
+      process.env.NEXT_PUBLIC_SERVER_URL ||
+      `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:3001`;
 
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(serverUrl, {
       transports: ['websocket', 'polling'],
