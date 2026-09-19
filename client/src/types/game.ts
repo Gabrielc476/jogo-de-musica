@@ -60,6 +60,7 @@ export interface Room {
   hostId: string;
   speakerId: string | null;        // Socket ID or persistent ID of speaker
   masterIndex: number;             // Index in players array pointing to current Master
+  masterQueue?: string[];          // Persistent IDs/IDs of players in randomized order ensuring all play
   players: Player[];
   currentTrack?: TrackSnippet;
   currentGuesses: Record<string, PlayerGuess>;

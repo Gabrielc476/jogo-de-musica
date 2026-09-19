@@ -67,22 +67,27 @@ describe('RoomManager', () => {
     expect(room.status).toBe('ROUND_PLAYING');
     expect(bufferEndsAt - endsAt).toBe(5000); // 5s de buffer de digitação
 
+    const master = room.players.find((p) => p.isMaster)!;
+    expect(master).toBeDefined();
+    const guessers = room.players.filter((p) => !p.isMaster);
+    expect(guessers).toHaveLength(2);
+
     // Mestre não pode palpitar
-    expect(() => manager.submitGuess(room.pin, 'socket-1', 'Chute', 'Artista')).toThrow(
+    expect(() => manager.submitGuess(room.pin, master.id, 'Chute', 'Artista')).toThrow(
       'O Mestre da rodada não palpita'
     );
 
-    // Renata envia palpite
-    const { allGuessed: all1 } = manager.submitGuess(room.pin, 'socket-2', 'Tempo Perdido', 'Legião Urbana');
+    // Primeiro adivinhador envia palpite
+    const { allGuessed: all1 } = manager.submitGuess(room.pin, guessers[0].id, 'Tempo Perdido', 'Legião Urbana');
     expect(all1).toBe(false);
 
     // Tentativa de segundo palpite (Palpite Único bloqueia)
-    expect(() => manager.submitGuess(room.pin, 'socket-2', 'Outro', 'Banda')).toThrow(
+    expect(() => manager.submitGuess(room.pin, guessers[0].id, 'Outro', 'Banda')).toThrow(
       'Palpite único já submetido'
     );
 
-    // Lucas envia palpite -> agora todos adivinhadores enviaram
-    const { allGuessed: all2 } = manager.submitGuess(room.pin, 'socket-3', 'Pais e Filhos', 'Legião');
+    // Segundo adivinhador envia palpite -> agora todos adivinhadores enviaram
+    const { allGuessed: all2 } = manager.submitGuess(room.pin, guessers[1].id, 'Pais e Filhos', 'Legião');
     expect(all2).toBe(true);
 
     // Revelação e pontuação
@@ -95,8 +100,40 @@ describe('RoomManager', () => {
     manager.nextRound(room.pin);
     expect(room.round).toBe(2);
     expect(room.status).toBe('MASTER_CHOOSING');
-    expect(room.players[1].isMaster).toBe(true);
-    expect(room.players[0].isMaster).toBe(false);
+    const masterRound2 = room.players.find((p) => p.isMaster)!;
+    expect(masterRound2.id).not.toBe(master.id);
+  });
+
+  it('deve garantir seleção randômica de mestre em ciclos onde todos jogam pelo menos uma vez', () => {
+    const room = manager.createRoom('socket-1', 'Gabriel');
+    manager.joinRoom(room.pin, 'socket-2', 'Renata');
+    manager.joinRoom(room.pin, 'socket-3', 'Lucas');
+
+    // Partida de 3 rodadas com 3 jogadores: cada um deve ser Mestre exatamente uma vez
+    manager.startGame(room.pin, 3);
+    const mastersPlayed: string[] = [];
+
+    // Rodada 1
+    const m1 = room.players.find((p) => p.isMaster)!.id;
+    mastersPlayed.push(m1);
+
+    // Simula avanço para Rodada 2
+    room.status = 'ROUND_REVEAL';
+    manager.nextRound(room.pin);
+    const m2 = room.players.find((p) => p.isMaster)!.id;
+    mastersPlayed.push(m2);
+
+    // Simula avanço para Rodada 3
+    room.status = 'ROUND_REVEAL';
+    manager.nextRound(room.pin);
+    const m3 = room.players.find((p) => p.isMaster)!.id;
+    mastersPlayed.push(m3);
+
+    // Todos os 3 jogadores foram mestre exatamente 1 vez
+    expect(new Set(mastersPlayed).size).toBe(3);
+    expect(mastersPlayed).toContain('socket-1');
+    expect(mastersPlayed).toContain('socket-2');
+    expect(mastersPlayed).toContain('socket-3');
   });
 
   it('deve suportar Revanche mantendo participantes e resetando placares', () => {

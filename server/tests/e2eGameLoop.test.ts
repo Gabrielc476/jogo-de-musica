@@ -153,16 +153,29 @@ describe('E2E Realtime Multi-Device Game Loop', () => {
     });
 
     // 4. Host inicia a partida
+    let gameRoom: any = null;
     await new Promise<void>((resolve) => {
       hostClient.emit('game:start', { pin: roomPin, totalRounds: 3 });
       hostClient.on('room:sync', ({ room }) => {
         if (room.status === 'MASTER_CHOOSING') {
+          gameRoom = room;
           resolve();
         }
       });
     });
 
-    // 5. Host (Mestre da Rodada 1) seleciona a faixa e corte
+    const masterPlayer = gameRoom.players.find((p: any) => p.isMaster);
+    expect(masterPlayer).toBeDefined();
+
+    const allClients = [
+      { client: hostClient, id: hostClient.id },
+      { client: speakerClient, id: speakerClient.id },
+      { client: guesserClient, id: guesserClient.id }
+    ];
+    const masterObj = allClients.find((c) => c.id === masterPlayer.id)!;
+    const guesserObjs = allClients.filter((c) => c.id !== masterPlayer.id);
+
+    // 5. Mestre da Rodada 1 seleciona a faixa e corte
     const targetSnippet: TrackSnippet = {
       videoId: 'v987',
       title: 'Gostava Tanto de Você',
@@ -180,7 +193,7 @@ describe('E2E Realtime Multi-Device Game Loop', () => {
           resolve();
         }
       });
-      hostClient.emit('track:select', { pin: roomPin, snippet: targetSnippet });
+      masterObj.client.emit('track:select', { pin: roomPin, snippet: targetSnippet });
     });
 
     expect(speakerReceivedCue).toBe(true);
@@ -194,7 +207,7 @@ describe('E2E Realtime Multi-Device Game Loop', () => {
       speakerClient.emit('speaker:started', { pin: roomPin });
     });
 
-    // 7. Palpites sob Suspense Total: Renata e Lucas enviam
+    // 7. Palpites sob Suspense Total: Os dois adivinhadores enviam
     let resultsReceived: any = null;
     const resultsPromise = new Promise<void>((resolve) => {
       guesserClient.on('round:results', (results) => {
@@ -203,15 +216,15 @@ describe('E2E Realtime Multi-Device Game Loop', () => {
       });
     });
 
-    // Renata acerta Música + Artista
-    speakerClient.emit('guess:submit', {
+    // Adivinhador 1 acerta Música + Artista
+    guesserObjs[0].client.emit('guess:submit', {
       pin: roomPin,
       track: 'gostava tanto de voce',
       artist: 'tim maia'
     });
 
-    // Lucas acerta apenas a Música
-    guesserClient.emit('guess:submit', {
+    // Adivinhador 2 acerta apenas a Música
+    guesserObjs[1].client.emit('guess:submit', {
       pin: roomPin,
       track: 'Gostava Tanto de Você',
       artist: 'Jorge Ben'
@@ -223,21 +236,23 @@ describe('E2E Realtime Multi-Device Game Loop', () => {
     expect(resultsReceived.track.title).toBe('Gostava Tanto de Você');
 
     // 2 jogadores acertaram a faixa: 1000 / 2 = 500 base cada
-    const renataResult = resultsReceived.guesses.find((g: any) => g.playerId === speakerClient.id);
-    expect(renataResult.pointsEarned).toBe(500 + 150); // 500 base + 150 bônus artista
+    const guesserWithArtist = resultsReceived.guesses.find((g: any) => g.playerId === guesserObjs[0].id);
+    expect(guesserWithArtist.pointsEarned).toBe(500 + 150); // 500 base + 150 bônus artista
 
-    const lucasResult = resultsReceived.guesses.find((g: any) => g.playerId === guesserClient.id);
-    expect(lucasResult.pointsEarned).toBe(500); // apenas 500 base
+    const guesserTrackOnly = resultsReceived.guesses.find((g: any) => g.playerId === guesserObjs[1].id);
+    expect(guesserTrackOnly.pointsEarned).toBe(500); // apenas 500 base
 
-    // Mestre pontua 500 pts no Dilema do Mestre (2 de 2 adivinhadores acertaram -> 200 pts pois todos acertaram!)
+    // Mestre pontua 200 pts no Dilema do Mestre (2 de 2 adivinhadores acertaram -> 200 pts pois todos acertaram!)
     expect(resultsReceived.masterPoints).toBe(200);
 
-    // 8. Próxima rodada rotaciona o Mestre para Renata
+    // 8. Próxima rodada rotaciona o Mestre para outro jogador
     await new Promise<void>((resolve) => {
       hostClient.emit('round:next', { pin: roomPin });
       hostClient.on('room:sync', ({ room }) => {
         if (room.round === 2) {
-          expect(room.players[1].isMaster).toBe(true);
+          const round2Master = room.players.find((p: any) => p.isMaster);
+          expect(round2Master).toBeDefined();
+          expect(round2Master.id).not.toBe(masterPlayer.id);
           resolve();
         }
       });

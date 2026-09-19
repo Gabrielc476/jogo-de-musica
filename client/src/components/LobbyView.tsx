@@ -127,6 +127,7 @@ export function LobbyView({
   // Se já está na sala: Lobby de Espera
   const isHost = currentPlayer?.isHost ?? false;
   const isSpeaker = currentPlayer?.isAudioSpeaker ?? false;
+  const numPlayers = room.players.length;
 
   return (
     <div className="flex flex-col justify-between flex-1 py-1 animate-in fade-in">
@@ -229,22 +230,131 @@ export function LobbyView({
       <div className="mt-3">
         {isHost ? (
           <div className="flex flex-col gap-2.5">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-semibold text-zinc-300">Total de Rodadas:</span>
-              <div className="flex gap-1 bg-[#181818] p-1 rounded-xl border border-white/5">
-                {[3, 5, 7, 10].map((count) => (
+            {/* Seletor de Rodadas Customizável com Garantia de Mestre */}
+            <div className="bg-[#181818] p-3 rounded-2xl border border-white/5 space-y-2.5 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-white">Total de Rodadas</span>
+                  <span className="text-[10px] text-zinc-400">
+                    {numPlayers} {numPlayers === 1 ? 'jogador na sala' : 'jogadores na sala'}
+                  </span>
+                </div>
+
+                {/* Stepper com decremento, número e incremento */}
+                <div className="flex items-center gap-1.5 bg-[#242424] p-1 rounded-xl border border-white/10">
                   <button
-                    key={count}
-                    onClick={() => setSelectedRounds(count)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                      selectedRounds === count
-                        ? 'bg-white text-black'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
+                    type="button"
+                    onClick={() => setSelectedRounds((prev) => Math.max(1, prev - 1))}
+                    className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-white font-bold text-sm flex items-center justify-center transition-all disabled:opacity-30"
+                    disabled={selectedRounds <= 1}
                   >
-                    {count}
+                    -
                   </button>
-                ))}
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={selectedRounds}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) {
+                        setSelectedRounds(Math.max(1, Math.min(50, val)));
+                      }
+                    }}
+                    className="w-9 text-center bg-transparent text-white font-mono font-bold text-sm outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRounds((prev) => Math.min(50, prev + 1))}
+                    className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-white font-bold text-sm flex items-center justify-center transition-all disabled:opacity-30"
+                    disabled={selectedRounds >= 50}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Botões Rápidos calculados pela quantidade de jogadores */}
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                {numPlayers > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRounds(numPlayers)}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all ${
+                        selectedRounds === numPlayers
+                          ? 'bg-emerald-500 text-black shadow-md'
+                          : 'bg-[#242424] text-zinc-300 hover:text-white hover:bg-[#2c2c2c]'
+                      }`}
+                    >
+                      1x cada ({numPlayers})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRounds(numPlayers * 2)}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all ${
+                        selectedRounds === numPlayers * 2
+                          ? 'bg-emerald-500 text-black shadow-md'
+                          : 'bg-[#242424] text-zinc-300 hover:text-white hover:bg-[#2c2c2c]'
+                      }`}
+                    >
+                      2x cada ({numPlayers * 2})
+                    </button>
+                    {numPlayers * 3 <= 30 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRounds(numPlayers * 3)}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all ${
+                          selectedRounds === numPlayers * 3
+                            ? 'bg-emerald-500 text-black shadow-md'
+                            : 'bg-[#242424] text-zinc-300 hover:text-white hover:bg-[#2c2c2c]'
+                        }`}
+                      >
+                        3x ({numPlayers * 3})
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  [3, 5, 7, 10].map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setSelectedRounds(count)}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
+                        selectedRounds === count
+                          ? 'bg-white text-black'
+                          : 'bg-[#242424] text-zinc-300 hover:text-white'
+                      }`}
+                    >
+                      {count}
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {/* Feedback explicativo da garantia de Mestre randômico */}
+              <div className="pt-0.5">
+                {numPlayers > 1 && selectedRounds >= numPlayers ? (
+                  <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium leading-tight">
+                    <span>🎲</span>
+                    <span>
+                      {selectedRounds % numPlayers === 0
+                        ? `Ordem 100% aleatória: cada um será Mestre exatamente ${selectedRounds / numPlayers}x.`
+                        : `Ordem 100% aleatória: todos serão Mestre pelo menos ${Math.floor(selectedRounds / numPlayers)}x.`}
+                    </span>
+                  </div>
+                ) : numPlayers > 1 ? (
+                  <div className="flex items-center gap-1.5 text-[11px] text-amber-400 font-medium leading-tight">
+                    <span>⚠️</span>
+                    <span>
+                      Partida curta: {numPlayers - selectedRounds} jogador(es) não terão vez como Mestre.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-zinc-500 font-mono">
+                    🎲 Ordem dos Mestres será 100% aleatória em ciclos completos.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -252,13 +362,16 @@ export function LobbyView({
               onClick={() => onStartGame(room.pin, selectedRounds)}
               className="w-full py-4 rounded-xl font-extrabold text-sm bg-emerald-500 hover:bg-emerald-400 text-black active:scale-[0.99] transition-all shadow-[0_4px_25px_rgba(30,215,96,0.3)]"
             >
-              Iniciar Partida
+              Iniciar Partida ({selectedRounds} {selectedRounds === 1 ? 'Rodada' : 'Rodadas'})
             </button>
           </div>
         ) : (
-          <div className="text-center p-3 rounded-xl bg-white/5 border border-white/5">
-            <p className="text-xs text-zinc-400 font-medium">
+          <div className="text-center p-3.5 rounded-xl bg-[#181818] border border-white/5 space-y-1 shadow-md">
+            <p className="text-xs text-zinc-300 font-medium">
               Aguardando o anfitrião iniciar o jogo...
+            </p>
+            <p className="text-[11px] text-zinc-500 font-mono">
+              🎲 Ordem dos Mestres: 100% aleatória (todos jogam ao menos 1x)
             </p>
           </div>
         )}

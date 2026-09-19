@@ -173,6 +173,18 @@ export class RoomManager {
       delete room.currentGuesses[removedPlayer.persistentId];
     }
 
+    // Remove o jogador da fila de mestres e reabastece se necessário
+    if (room.masterQueue) {
+      room.masterQueue = room.masterQueue.filter(
+        (id) => id !== removedPlayer.id && id !== removedPlayer.persistentId
+      );
+      const remainingRounds = room.totalRounds - room.round + 1;
+      if (room.masterQueue.length < remainingRounds && room.players.length > 0) {
+        const replenishment = this.generateMasterQueue(room.players, remainingRounds);
+        room.masterQueue.push(...replenishment);
+      }
+    }
+
     return room;
   }
 
@@ -212,21 +224,62 @@ export class RoomManager {
     return room;
   }
 
+  /**
+   * Gera uma fila de Mestres 100% randômica em ciclos completos (bag system).
+   * Garante que cada participante seja Mestre exatamente 1 vez por ciclo antes que
+   * qualquer um repita, evitando repetições consecutivas na virada de ciclo.
+   */
+  public generateMasterQueue(players: Player[], totalRounds: number): string[] {
+    if (players.length === 0) return [];
+    const queue: string[] = [];
+    const candidates = players.map((p) => p.persistentId || p.id);
+
+    while (queue.length < totalRounds) {
+      // Clona candidatos para o ciclo atual
+      const cycle = [...candidates];
+
+      // Embaralhamento Fisher-Yates
+      for (let i = cycle.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cycle[i], cycle[j]] = [cycle[j], cycle[i]];
+      }
+
+      // Evita repetição imediata na virada de ciclo quando houver mais de 1 jogador
+      if (queue.length > 0 && cycle.length > 1 && cycle[0] === queue[queue.length - 1]) {
+        [cycle[0], cycle[1]] = [cycle[1], cycle[0]];
+      }
+
+      queue.push(...cycle);
+    }
+
+    return queue.slice(0, totalRounds);
+  }
+
   public startGame(pin: string, totalRounds: number = 5): Room {
     const room = this.rooms.get(pin);
     if (!room) throw new Error('Sala não encontrada.');
 
-    room.totalRounds = totalRounds;
+    const validRounds = Math.max(1, Math.min(50, totalRounds));
+    room.totalRounds = validRounds;
     room.round = 1;
-    room.masterIndex = 0;
     room.status = 'MASTER_CHOOSING';
     delete room.lastResults;
 
-    room.players.forEach((p, idx) => {
+    // Gera a fila aleatória em ciclos completos
+    room.masterQueue = this.generateMasterQueue(room.players, validRounds);
+    const firstMasterId = room.masterQueue[0];
+
+    room.players.forEach((p) => {
       p.score = 0;
       p.hasGuessed = false;
-      p.isMaster = idx === room.masterIndex;
+      p.isMaster = (p.persistentId === firstMasterId || p.id === firstMasterId);
     });
+
+    room.masterIndex = room.players.findIndex((p) => p.isMaster);
+    if (room.masterIndex === -1 && room.players.length > 0) {
+      room.players[0].isMaster = true;
+      room.masterIndex = 0;
+    }
 
     return room;
   }
@@ -354,19 +407,39 @@ export class RoomManager {
     }
 
     room.round += 1;
-    room.masterIndex = (room.masterIndex + 1) % room.players.length;
-    room.status = 'MASTER_CHOOSING';
     delete room.currentTrack;
     delete room.roundEndsAt;
     delete room.bufferEndsAt;
     delete room.lastResults;
     room.currentGuesses = {};
 
-    room.players.forEach((p, idx) => {
+    // Garante que a fila de mestres exista e tenha candidatos suficientes
+    if (!room.masterQueue || room.masterQueue.length < room.totalRounds) {
+      room.masterQueue = this.generateMasterQueue(room.players, room.totalRounds);
+    }
+
+    const nextMasterId = room.masterQueue[room.round - 1];
+    let nextMaster = room.players.find(
+      (p) => p.persistentId === nextMasterId || p.id === nextMasterId
+    );
+
+    // Se o jogador sorteado saiu da sala, escolhe o próximo disponível
+    if (!nextMaster) {
+      nextMaster = room.players[(room.masterIndex + 1) % room.players.length];
+    }
+
+    room.players.forEach((p) => {
       p.hasGuessed = false;
-      p.isMaster = idx === room.masterIndex;
+      p.isMaster = nextMaster ? p.id === nextMaster.id : false;
     });
 
+    room.masterIndex = room.players.findIndex((p) => p.isMaster);
+    if (room.masterIndex === -1 && room.players.length > 0) {
+      room.players[0].isMaster = true;
+      room.masterIndex = 0;
+    }
+
+    room.status = 'MASTER_CHOOSING';
     return room;
   }
 
@@ -375,7 +448,6 @@ export class RoomManager {
     if (!room) throw new Error('Sala não encontrada.');
 
     room.round = 1;
-    room.masterIndex = 0;
     room.status = 'MASTER_CHOOSING';
     delete room.currentTrack;
     delete room.roundEndsAt;
@@ -383,11 +455,21 @@ export class RoomManager {
     delete room.lastResults;
     room.currentGuesses = {};
 
-    room.players.forEach((p, idx) => {
+    // Novo sorteio aleatório em ciclos para a revanche
+    room.masterQueue = this.generateMasterQueue(room.players, room.totalRounds);
+    const firstMasterId = room.masterQueue[0];
+
+    room.players.forEach((p) => {
       p.score = 0;
       p.hasGuessed = false;
-      p.isMaster = idx === room.masterIndex;
+      p.isMaster = (p.persistentId === firstMasterId || p.id === firstMasterId);
     });
+
+    room.masterIndex = room.players.findIndex((p) => p.isMaster);
+    if (room.masterIndex === -1 && room.players.length > 0) {
+      room.players[0].isMaster = true;
+      room.masterIndex = 0;
+    }
 
     return room;
   }
