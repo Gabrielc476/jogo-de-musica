@@ -9,8 +9,9 @@ import { ClientToServerEvents, ServerToClientEvents } from './types/game.js';
 const fastify = Fastify({ logger: true });
 
 await fastify.register(fastifyCors, {
-  origin: '*',
-  methods: ['GET', 'POST']
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true
 });
 
 fastify.get('/health', async () => {
@@ -19,8 +20,12 @@ fastify.get('/health', async () => {
 
 const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(fastify.server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
+    origin: (origin, callback) => {
+      // Permite qualquer origem (Vercel, previews, localhost e IPs locais de celular)
+      callback(null, true);
+    },
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
