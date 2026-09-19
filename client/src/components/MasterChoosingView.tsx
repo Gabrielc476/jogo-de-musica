@@ -12,6 +12,19 @@ interface MasterChoosingViewProps {
   onShowToast: (msg: string) => void;
 }
 
+const INITIAL_RECOMMENDED_TRACKS = [
+  { videoId: 'O2aT0R1kM80', title: 'Gostava Tanto de Você', artist: 'Tim Maia', rawTitle: 'Tim Maia - Gostava Tanto de Você', durationSec: 258, color: '#7f1d1d', tag: 'TM' },
+  { videoId: 'O3x_wU8p70M', title: 'Não Quero Dinheiro (Só Quero Amar)', artist: 'Tim Maia', rawTitle: 'Tim Maia - Não Quero Dinheiro', durationSec: 154, color: '#9a3412', tag: 'TM' },
+  { videoId: 'qC8eK-eP89Y', title: 'Tempo Perdido', artist: 'Legião Urbana', rawTitle: 'Legião Urbana - Tempo Perdido', durationSec: 302, color: '#14532d', tag: 'LU' },
+  { videoId: 'e8x8QkEwU68', title: 'Pais e Filhos', artist: 'Legião Urbana', rawTitle: 'Legião Urbana - Pais e Filhos', durationSec: 308, color: '#581c87', tag: 'LU' },
+  { videoId: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen', rawTitle: 'Queen - Bohemian Rhapsody', durationSec: 359, color: '#831843', tag: 'QN' },
+  { videoId: 'Zi_XLOBDo_Y', title: 'Billie Jean', artist: 'Michael Jackson', rawTitle: 'Michael Jackson - Billie Jean', durationSec: 294, color: '#1e3a8a', tag: 'MJ' },
+  { videoId: 'h_D3VFkatAQ', title: 'Cheia de Manias', artist: 'Raça Negra', rawTitle: 'Raça Negra - Cheia de Manias', durationSec: 220, color: '#9a3412', tag: 'RN' },
+  { videoId: '7c_4fK7tWvY', title: 'Evidências', artist: 'Chitãozinho & Xororó', rawTitle: 'Chitãozinho & Xororó - Evidências', durationSec: 279, color: '#14532d', tag: 'CX' },
+  { videoId: 'qO6KjW7w81M', title: 'Taj Mahal', artist: 'Jorge Ben Jor', rawTitle: 'Jorge Ben Jor - Taj Mahal', durationSec: 204, color: '#581c87', tag: 'JB' },
+  { videoId: '0U6yX7w70fI', title: 'O Descobridor dos Sete Mares', artist: 'Tim Maia', rawTitle: 'Tim Maia - O Descobridor dos Sete Mares', durationSec: 262, color: '#1e3a8a', tag: 'TM' },
+];
+
 export function MasterChoosingView({
   room,
   currentPlayer,
@@ -24,9 +37,9 @@ export function MasterChoosingView({
   const isMaster = currentPlayer?.isMaster ?? false;
 
   const [step, setStep] = useState<'search' | 'trimmer'>('search');
-  const [searchQuery, setSearchQuery] = useState('Tim Maia');
+  const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any[]>(INITIAL_RECOMMENDED_TRACKS);
   const [isSearching, setIsSearching] = useState(false);
 
   // Estado da faixa selecionada para corte
@@ -47,26 +60,31 @@ export function MasterChoosingView({
   const [syncedLyrics, setSyncedLyrics] = useState<LyricLine[]>([]);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
 
-  // Executa busca inicial padrão
-  useEffect(() => {
-    if (isMaster) {
-      handleSearch('Tim Maia');
-    }
-  }, [isMaster]);
-
   const handleSearch = async (queryToSearch?: string) => {
-    const q = queryToSearch !== undefined ? queryToSearch : searchQuery;
-    if (!q.trim()) return;
+    const q = (queryToSearch !== undefined ? queryToSearch : searchQuery).trim();
+    if (!q) {
+      setSearchResults(INITIAL_RECOMMENDED_TRACKS);
+      return;
+    }
 
     setIsSearching(true);
     try {
       const res = await onSearchYouTube(q);
-      setSearchResults(res);
-      if (res.length === 0) {
-        onShowToast('Nenhum resultado encontrado.');
+      if (res && res.length > 0) {
+        setSearchResults(res);
+      } else {
+        // Se a busca remota falhar ou der timeout, filtra as faixas recomendadas locais
+        const filtered = INITIAL_RECOMMENDED_TRACKS.filter(
+          (t) =>
+            t.title.toLowerCase().includes(q.toLowerCase()) ||
+            t.artist.toLowerCase().includes(q.toLowerCase())
+        );
+        setSearchResults(filtered.length > 0 ? filtered : INITIAL_RECOMMENDED_TRACKS);
+        onShowToast('Exibindo sugestões do lounge.');
       }
     } catch {
-      onShowToast('Erro ao realizar busca.');
+      setSearchResults(INITIAL_RECOMMENDED_TRACKS);
+      onShowToast('Exibindo catálogo rápido.');
     } finally {
       setIsSearching(false);
     }

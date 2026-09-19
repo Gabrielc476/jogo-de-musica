@@ -1,5 +1,4 @@
-'use client';
-
+import { useState } from 'react';
 import { Player, Room } from '../types/game';
 import { RoundResultsData } from '../hooks/useGameSocket';
 
@@ -16,6 +15,7 @@ export function RevealView({
   results,
   onNextRound
 }: RevealViewProps) {
+  const [isAdvancing, setIsAdvancing] = useState(false);
   const isHostOrMaster = currentPlayer?.isHost || currentPlayer?.isMaster;
   const track = results?.track || room.currentTrack;
 
@@ -116,10 +116,18 @@ export function RevealView({
       {/* Botão de Próxima Rodada */}
       {isHostOrMaster ? (
         <button
-          onClick={() => onNextRound(room.pin)}
-          className="w-full py-4 rounded-xl font-extrabold text-sm bg-white hover:bg-zinc-200 active:scale-[0.99] text-black transition-all shadow-lg"
+          disabled={isAdvancing}
+          onClick={() => {
+            setIsAdvancing(true);
+            onNextRound(room.pin);
+          }}
+          className={`w-full py-4 rounded-xl font-extrabold text-sm transition-all shadow-lg ${
+            isAdvancing
+              ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
+              : 'bg-white hover:bg-zinc-200 active:scale-[0.99] text-black'
+          }`}
         >
-          {room.round >= room.totalRounds ? 'Ver Pódio Final 🏆' : 'Próxima Rodada →'}
+          {isAdvancing ? 'Carregando...' : room.round >= room.totalRounds ? 'Ver Pódio Final 🏆' : 'Próxima Rodada →'}
         </button>
       ) : (
         <div className="text-center p-3 rounded-xl bg-white/5 border border-white/5">

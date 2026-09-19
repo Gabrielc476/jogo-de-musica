@@ -5,8 +5,8 @@ export function cleanMusicString(input: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // Remove diacríticos e acentos (ç, é, ã...)
-    .replace(/\(.*?\)|\[.*?\]/g, '') // Remove conteúdo entre parênteses ou colchetes
-    .replace(/\b(feat\.?|ft\.?|featuring|ao vivo|remastered|remaster|clipe oficial|video oficial|official video|official audio|audio oficial|lyric video|letra|hd|4k)\b.*/gi, '')
+    .replace(/\(.*?\)|\[.*?\]/g, ' ') // Remove conteúdo entre parênteses ou colchetes
+    .replace(/\b(feat\.?|ft\.?|featuring|ao vivo|remastered|remaster|clipe oficial|video oficial|official video|official audio|audio oficial|lyric video|letra|hd|4k)\b/gi, ' ')
     .replace(/[^a-z0-9\s]/g, ' ')     // Troca pontuações por espaço
     .replace(/\s+/g, ' ')            // Unifica múltiplos espaços
     .trim();
@@ -14,7 +14,7 @@ export function cleanMusicString(input: string): string {
   // Remove artigos iniciais comuns para facilitar o acerto (ex: "o descobrimento" -> "descobrimento")
   cleaned = cleaned.replace(/^(o|a|os|as|the)\s+/, '');
 
-  return cleaned;
+  return cleaned.trim();
 }
 
 export function levenshteinDistance(a: string, b: string): number {
@@ -44,15 +44,18 @@ export function levenshteinDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
-export function isMatch(userGuess: string, targetAnswer: string, tolerance: number = 0.82): boolean {
+export function isMatch(userGuess: string, targetAnswer: string, tolerance: number = 0.78): boolean {
   const cleanGuess = cleanMusicString(userGuess);
   const cleanTarget = cleanMusicString(targetAnswer);
 
   if (!cleanGuess || !cleanTarget) return false;
   if (cleanGuess === cleanTarget) return true;
 
-  // Se o alvo contém o palpite ou o palpite contém o alvo (ex: "gostava tanto de voce" e "gostava tanto")
-  if ((cleanTarget.includes(cleanGuess) || cleanGuess.includes(cleanTarget)) && Math.min(cleanGuess.length, cleanTarget.length) >= 4) {
+  // Substring matching (ex: "gostava tanto de voce" e "gostava tanto")
+  if (
+    (cleanTarget.includes(cleanGuess) || cleanGuess.includes(cleanTarget)) &&
+    Math.min(cleanGuess.length, cleanTarget.length) >= 3
+  ) {
     return true;
   }
 

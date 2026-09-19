@@ -21,7 +21,6 @@ fastify.get('/health', async () => {
 const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(fastify.server, {
   cors: {
     origin: (origin, callback) => {
-      // Permite qualquer origem (Vercel, previews, localhost e IPs locais de celular)
       callback(null, true);
     },
     methods: ['GET', 'POST'],
@@ -33,7 +32,6 @@ const roomManager = new RoomManager();
 const youtubeService = new YouTubeService();
 const lyricsService = new LyricsService();
 
-// Armazena temporizadores de fim de rodada por sala
 const roundTimers = new Map<string, NodeJS.Timeout>();
 
 function clearRoomTimer(pin: string) {
@@ -61,9 +59,9 @@ function finishRound(pin: string) {
 io.on('connection', (socket) => {
   console.log(`[Socket] Conectado: ${socket.id}`);
 
-  socket.on('room:create', ({ nickname }) => {
+  socket.on('room:create', ({ nickname, persistentId }) => {
     try {
-      const room = roomManager.createRoom(socket.id, nickname);
+      const room = roomManager.createRoom(socket.id, nickname, persistentId);
       socket.join(room.pin);
       socket.emit('room:sync', { room });
     } catch (err: any) {
@@ -71,13 +69,28 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('room:join', ({ pin, nickname }) => {
+  socket.on('room:join', ({ pin, nickname, persistentId }) => {
     try {
-      const room = roomManager.joinRoom(pin, socket.id, nickname);
+      const room = roomManager.joinRoom(pin, socket.id, nickname, persistentId);
       socket.join(room.pin);
       io.to(room.pin).emit('room:sync', { room });
     } catch (err: any) {
       socket.emit('error:toast', { message: err.message || 'Erro ao entrar na sala.' });
+    }
+  });
+
+  socket.on('room:reconnect', ({ pin, persistentId }) => {
+    try {
+      const room = roomManager.handleReconnect(pin, socket.id, persistentId);
+      if (room) {
+        socket.join(room.pin);
+        socket.emit('room:sync', { room });
+        if (room.lastResults) {
+          socket.emit('round:results', room.lastResults);
+        }
+      }
+    } catch {
+      // Ignora erro de reconexão silenciosa
     }
   });
 
@@ -108,7 +121,7 @@ io.on('connection', (socket) => {
     try {
       const results = await youtubeService.search(query);
       if (callback) callback(results);
-    } catch (err: any) {
+    } catch {
       if (callback) callback([]);
     }
   });
@@ -131,7 +144,6 @@ io.on('connection', (socket) => {
       const updated = roomManager.selectTrack(pin, snippet);
       io.to(pin).emit('room:sync', { room: updated });
 
-      // Emite o sinal de preparo exclusivamente para o aparelho da Caixa de Som
       if (updated.speakerId) {
         io.to(updated.speakerId).emit('speaker:cue', {
           videoId: snippet.videoId,
@@ -149,7 +161,7 @@ io.on('connection', (socket) => {
       const room = roomManager.getRoom(pin);
       if (!room) return;
       if (room.speakerId !== socket.id) {
-        socket.emit('error:toast', { message: 'Apenas o dispositivo da Caixa de Som pode disparar o áudio.' });
+        socket.emit('error:toast', { message: 'Apenas a Caixa de Som pode disparar o áudio.' });
         return;
       }
 
@@ -159,7 +171,6 @@ io.on('connection', (socket) => {
       io.to(pin).emit('round:started', { endsAt, bufferEndsAt, durationSec });
       io.to(pin).emit('room:sync', { room });
 
-      // Agenda o encerramento da rodada para o fim do Buffer de Digitação (áudio + 5s)
       const timeoutMs = Math.max(1000, bufferEndsAt - Date.now());
       const timer = setTimeout(() => {
         finishRound(pin);
@@ -175,11 +186,9 @@ io.on('connection', (socket) => {
     try {
       const { room, allGuessed } = roomManager.submitGuess(pin, socket.id, track, artist);
 
-      // Notifica a sala que o jogador submeteu o palpite (Suspense Total: sem revelar acerto)
       io.to(pin).emit('guess:received', { playerId: socket.id });
       io.to(pin).emit('room:sync', { room });
 
-      // Se todos os adivinhadores já responderam, encerra a rodada imediatamente
       if (allGuessed) {
         finishRound(pin);
       }
@@ -217,7 +226,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`[Socket] Desconectado: ${socket.id}`);
-    const { room, pin } = roomManager.leaveRoom(socket.id);
+    const { room, pin } = roomManager.handleDisconnect(socket.id);
     if (room && pin) {
       io.to(pin).emit('room:sync', { room });
     }

@@ -1,10 +1,9 @@
-import { Player, PlayerGuess, Room, TrackSnippet } from '../types/game.js';
+import { Player, PlayerGuess, Room, TrackSnippet, RoundResultsPayload } from '../types/game.js';
 import { evaluateRound } from '../lib/scoring.js';
 
 export class RoomManager {
   private rooms = new Map<string, Room>();
 
-  // Gera PIN legível de 4 dígitos (ex: 8492)
   private generatePin(): string {
     let pin: string;
     let attempts = 0;
@@ -28,17 +27,20 @@ export class RoomManager {
     return undefined;
   }
 
-  public createRoom(hostSocketId: string, nickname: string): Room {
+  public createRoom(hostSocketId: string, nickname: string, persistentId?: string): Room {
     const pin = this.generatePin();
+    const pid = persistentId || hostSocketId;
     const host: Player = {
       id: hostSocketId,
+      persistentId: pid,
       nickname: nickname.trim(),
       avatarSeed: Math.floor(Math.random() * 8 + 1).toString(),
       score: 0,
       isHost: true,
       isMaster: true,
       isAudioSpeaker: false,
-      hasGuessed: false
+      hasGuessed: false,
+      isOnline: true
     };
 
     const room: Room = {
@@ -57,7 +59,7 @@ export class RoomManager {
     return room;
   }
 
-  public joinRoom(pin: string, socketId: string, nickname: string): Room {
+  public joinRoom(pin: string, socketId: string, nickname: string, persistentId?: string): Room {
     const room = this.rooms.get(pin);
     if (!room) {
       throw new Error(`Sala #${pin} não encontrada.`);
@@ -68,64 +70,84 @@ export class RoomManager {
       throw new Error('Apelido inválido.');
     }
 
-    const existingPlayer = room.players.find((p) => p.id === socketId);
-    if (existingPlayer) {
-      existingPlayer.nickname = trimmedNickname;
-      return room;
+    // Se o jogador já existia pelo persistentId (reconexão)
+    if (persistentId) {
+      const existingByPersistentId = room.players.find((p) => p.persistentId === persistentId);
+      if (existingByPersistentId) {
+        existingByPersistentId.id = socketId;
+        existingByPersistentId.nickname = trimmedNickname;
+        existingByPersistentId.isOnline = true;
+        if (room.hostId === existingByPersistentId.id) {
+          room.hostId = socketId;
+        }
+        if (room.speakerId === existingByPersistentId.id) {
+          room.speakerId = socketId;
+        }
+        return room;
+      }
     }
 
     const nameConflict = room.players.some(
-      (p) => p.nickname.toLowerCase() === trimmedNickname.toLowerCase()
+      (p) => p.nickname.toLowerCase() === trimmedNickname.toLowerCase() && (persistentId ? p.persistentId !== persistentId : true)
     );
     if (nameConflict) {
       throw new Error(`O apelido "${trimmedNickname}" já está em uso nesta sala.`);
     }
 
+    const pid = persistentId || socketId;
     const newPlayer: Player = {
       id: socketId,
+      persistentId: pid,
       nickname: trimmedNickname,
       avatarSeed: Math.floor(Math.random() * 8 + 1).toString(),
       score: 0,
       isHost: false,
       isMaster: false,
       isAudioSpeaker: false,
-      hasGuessed: false
+      hasGuessed: false,
+      isOnline: true
     };
 
     room.players.push(newPlayer);
     return room;
   }
 
-  public leaveRoom(socketId: string): { room?: Room; pin?: string } {
+  public handleReconnect(pin: string, socketId: string, persistentId: string): Room | null {
+    const room = this.rooms.get(pin);
+    if (!room) return null;
+
+    const player = room.players.find((p) => p.persistentId === persistentId);
+    if (player) {
+      const oldSocketId = player.id;
+      player.id = socketId;
+      player.isOnline = true;
+
+      if (room.hostId === oldSocketId) room.hostId = socketId;
+      if (room.speakerId === oldSocketId) room.speakerId = socketId;
+
+      return room;
+    }
+
+    return null;
+  }
+
+  public handleDisconnect(socketId: string): { room?: Room; pin?: string } {
     for (const [pin, room] of this.rooms.entries()) {
-      const playerIndex = room.players.findIndex((p) => p.id === socketId);
-      if (playerIndex !== -1) {
-        const removed = room.players.splice(playerIndex, 1)[0];
+      const player = room.players.find((p) => p.id === socketId);
+      if (player) {
+        // NÃO remove o jogador imediatamente para evitar desyncs em mobile!
+        player.isOnline = false;
 
-        // Se a sala esvaziou, remove
-        if (room.players.length === 0) {
-          this.rooms.delete(pin);
-          return { pin };
+        // Se todos os jogadores estiverem offline, agenda exclusão após 10 minutos
+        const anyOnline = room.players.some((p) => p.isOnline);
+        if (!anyOnline) {
+          setTimeout(() => {
+            const currentRoom = this.rooms.get(pin);
+            if (currentRoom && !currentRoom.players.some((p) => p.isOnline)) {
+              this.rooms.delete(pin);
+            }
+          }, 10 * 60 * 1000);
         }
-
-        // Se o anfitrião saiu, passa para o primeiro restante
-        if (removed.isHost && room.players.length > 0) {
-          room.players[0].isHost = true;
-          room.hostId = room.players[0].id;
-        }
-
-        // Se a Caixa de Som saiu, reseta
-        if (room.speakerId === socketId) {
-          room.speakerId = null;
-        }
-
-        // Reajusta masterIndex se necessário
-        if (room.masterIndex >= room.players.length) {
-          room.masterIndex = 0;
-        }
-        room.players.forEach((p, idx) => {
-          p.isMaster = idx === room.masterIndex;
-        });
 
         return { room, pin };
       }
@@ -153,6 +175,7 @@ export class RoomManager {
     room.round = 1;
     room.masterIndex = 0;
     room.status = 'MASTER_CHOOSING';
+    delete room.lastResults;
 
     room.players.forEach((p, idx) => {
       p.score = 0;
@@ -179,7 +202,7 @@ export class RoomManager {
     const durationSec = room.currentTrack.durationSec || 15;
     const now = Date.now();
     const endsAt = now + durationSec * 1000;
-    const bufferEndsAt = endsAt + 5000; // 5 segundos de buffer de digitação
+    const bufferEndsAt = endsAt + 5000; // 5 segundos de buffer
 
     room.status = 'ROUND_PLAYING';
     room.roundEndsAt = endsAt;
@@ -206,18 +229,17 @@ export class RoomManager {
     const player = room.players.find((p) => p.id === socketId);
     if (!player) throw new Error('Jogador não encontrado.');
 
-    // O Mestre não envia palpites
     if (player.isMaster) {
       throw new Error('O Mestre da rodada não palpita.');
     }
 
-    // Regra de Palpite Único: se já enviou, bloqueia
     if (player.hasGuessed || room.currentGuesses[socketId]) {
       throw new Error('Palpite único já submetido para esta rodada.');
     }
 
-    room.currentGuesses[socketId] = {
+    const guess: PlayerGuess = {
       playerId: socketId,
+      persistentId: player.persistentId,
       trackGuess: track.trim(),
       artistGuess: artist.trim(),
       isTrackCorrect: false,
@@ -226,23 +248,19 @@ export class RoomManager {
       submittedAt: Date.now()
     };
 
+    room.currentGuesses[socketId] = guess;
     player.hasGuessed = true;
 
-    // Verifica se todos os adivinhadores já enviaram
-    const guessers = room.players.filter((p) => !p.isMaster);
-    const allGuessed = guessers.every((p) => p.hasGuessed);
+    // Apenas jogadores ativos e online são contados
+    const activeGuessers = room.players.filter((p) => !p.isMaster && p.isOnline);
+    const allGuessed = activeGuessers.length > 0 && activeGuessers.every((p) => p.hasGuessed);
 
     return { room, allGuessed };
   }
 
   public evaluateAndReveal(pin: string): {
     room: Room;
-    results: {
-      track: TrackSnippet;
-      guesses: PlayerGuess[];
-      scores: Player[];
-      masterPoints: number;
-    };
+    results: RoundResultsPayload;
   } {
     const room = this.rooms.get(pin);
     if (!room || !room.currentTrack) throw new Error('Sala ou faixa ausente.');
@@ -258,26 +276,33 @@ export class RoomManager {
     room.players = updatedPlayers;
     room.status = 'ROUND_REVEAL';
 
-    // Salva os palpites avaliados
     for (const g of evaluatedGuesses) {
       room.currentGuesses[g.playerId] = g;
     }
 
-    return {
-      room,
-      results: {
-        track: room.currentTrack,
-        guesses: evaluatedGuesses,
-        scores: room.players,
-        masterPoints
-      }
+    const results: RoundResultsPayload = {
+      track: room.currentTrack,
+      guesses: evaluatedGuesses,
+      scores: room.players,
+      masterPoints
     };
+
+    // Preserva no objeto da sala para reconexões tardias
+    room.lastResults = results;
+
+    return { room, results };
   }
 
   public nextRound(pin: string): Room {
     const room = this.rooms.get(pin);
     if (!room) throw new Error('Sala não encontrada.');
 
+    // Previne avanço duplo acidental se a rodada já tiver sido avançada por outro jogador
+    if (room.status !== 'ROUND_REVEAL') {
+      return room;
+    }
+
+    // Verifica se atingiu o total de rodadas
     if (room.round >= room.totalRounds) {
       room.status = 'GAME_OVER';
       return room;
@@ -289,6 +314,7 @@ export class RoomManager {
     delete room.currentTrack;
     delete room.roundEndsAt;
     delete room.bufferEndsAt;
+    delete room.lastResults;
     room.currentGuesses = {};
 
     room.players.forEach((p, idx) => {
@@ -309,6 +335,7 @@ export class RoomManager {
     delete room.currentTrack;
     delete room.roundEndsAt;
     delete room.bufferEndsAt;
+    delete room.lastResults;
     room.currentGuesses = {};
 
     room.players.forEach((p, idx) => {
