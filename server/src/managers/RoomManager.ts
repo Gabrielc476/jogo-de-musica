@@ -131,6 +131,51 @@ export class RoomManager {
     return null;
   }
 
+  public leaveRoom(pin: string, socketId: string, persistentId?: string): Room | null {
+    const room = this.rooms.get(pin);
+    if (!room) return null;
+
+    const playerIndex = room.players.findIndex(
+      (p) => (persistentId && p.persistentId === persistentId) || p.id === socketId
+    );
+    if (playerIndex === -1) return room;
+
+    const [removedPlayer] = room.players.splice(playerIndex, 1);
+
+    // Se a sala ficou vazia, remove a sala
+    if (room.players.length === 0) {
+      this.rooms.delete(pin);
+      return null;
+    }
+
+    // Se o jogador era o host, transfere a posse para o primeiro restante
+    if (room.hostId === removedPlayer.id || (persistentId && room.hostId === removedPlayer.persistentId)) {
+      room.hostId = room.players[0].id;
+      room.players[0].isHost = true;
+    }
+
+    // Se o jogador era o mestre, recalibra o masterIndex e atualiza as flags
+    if (removedPlayer.isMaster) {
+      room.masterIndex = room.masterIndex % room.players.length;
+      room.players.forEach((p, idx) => {
+        p.isMaster = idx === room.masterIndex;
+      });
+    }
+
+    // Se o jogador era a caixa de som, limpa
+    if (room.speakerId === removedPlayer.id) {
+      room.speakerId = null;
+    }
+
+    // Limpa palpites associados
+    delete room.currentGuesses[removedPlayer.id];
+    if (removedPlayer.persistentId) {
+      delete room.currentGuesses[removedPlayer.persistentId];
+    }
+
+    return room;
+  }
+
   public handleDisconnect(socketId: string): { room?: Room; pin?: string } {
     for (const [pin, room] of this.rooms.entries()) {
       const player = room.players.find((p) => p.id === socketId);

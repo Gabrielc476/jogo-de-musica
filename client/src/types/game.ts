@@ -84,6 +84,7 @@ export interface ClientToServerEvents {
   'guess:submit': (data: { pin: string; track: string; artist: string }) => void;
   'round:next': (data: { pin: string }) => void;
   'game:rematch': (data: { pin: string }) => void;
+  'room:leave': (data: { pin: string; persistentId?: string }) => void;
 }
 
 // Server to Client Events

@@ -25,6 +25,21 @@ export function useGameSocket() {
   const [roundTiming, setRoundTiming] = useState<{ endsAt: number; bufferEndsAt: number; durationSec: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [isMissingServerUrl, setIsMissingServerUrl] = useState(false);
+  const [connectingSeconds, setConnectingSeconds] = useState(0);
+
+  // Contador de segundos aguardando o servidor acordar
+  useEffect(() => {
+    if (connected) {
+      setConnectingSeconds(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setConnectingSeconds((s) => s + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [connected]);
 
   // Identificador de cliente único e persistente (sobrevive a quedas de Wi-Fi e reconexões)
   const [persistentId] = useState<string>(() => {
@@ -71,12 +86,17 @@ export function useGameSocket() {
       serverUrl = `${protocol}//${hostname}:3001`;
     }
 
+    // Ping proativo para acordar instâncias hibernadas (Render Free Tier)
+    if (serverUrl.startsWith('http')) {
+      fetch(`${serverUrl}/health`, { mode: 'no-cors' }).catch(() => {});
+    }
+
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(serverUrl, {
       transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 20,
-      reconnectionDelay: 800
+      reconnectionAttempts: 30,
+      reconnectionDelay: 1000
     });
 
     socketRef.current = socket;
@@ -222,6 +242,27 @@ export function useGameSocket() {
     socketRef.current?.emit('game:rematch', { pin });
   }, []);
 
+  const leaveRoom = useCallback((pin: string) => {
+    if (socketRef.current && pin) {
+      socketRef.current.emit('room:leave', { pin, persistentId });
+    }
+    try {
+      sessionStorage.removeItem('vl_room_pin');
+    } catch {
+      // Ignora erro de storage
+    }
+    setRoom(null);
+    setLastResults(null);
+    setSpeakerCue(null);
+    showToast('Você saiu da sala.');
+  }, [persistentId, showToast]);
+
+  const reconnectServer = useCallback(() => {
+    if (socketRef.current) {
+      socketRef.current.disconnect().connect();
+    }
+  }, []);
+
   // Procura jogador prioritariamente pelo persistentId (ou socketId como fallback)
   const currentPlayer = room?.players.find(
     (p) => p.persistentId === persistentId || p.id === socketId
@@ -229,6 +270,7 @@ export function useGameSocket() {
 
   return {
     connected,
+    connectingSeconds,
     isMissingServerUrl,
     socketId,
     persistentId,
@@ -241,6 +283,7 @@ export function useGameSocket() {
     showToast,
     createRoom,
     joinRoom,
+    leaveRoom,
     claimSpeaker,
     startGame,
     searchYouTube,
@@ -249,6 +292,7 @@ export function useGameSocket() {
     startSpeakerPlayback,
     submitGuess,
     nextRound,
-    rematch
+    rematch,
+    reconnectServer
   };
 }

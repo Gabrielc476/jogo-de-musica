@@ -11,6 +11,7 @@ interface LobbyViewProps {
   onClaimSpeaker: (pin: string) => void;
   onStartGame: (pin: string, totalRounds: number) => void;
   onCopyPin: (pin: string) => void;
+  onLeaveRoom?: (pin: string) => void;
 }
 
 export function LobbyView({
@@ -20,7 +21,8 @@ export function LobbyView({
   onJoinRoom,
   onClaimSpeaker,
   onStartGame,
-  onCopyPin
+  onCopyPin,
+  onLeaveRoom
 }: LobbyViewProps) {
   const [nickname, setNickname] = useState('');
   const [pinInput, setPinInput] = useState('');
@@ -259,6 +261,15 @@ export function LobbyView({
               Aguardando o anfitrião iniciar o jogo...
             </p>
           </div>
+        )}
+
+        {onLeaveRoom && (
+          <button
+            onClick={() => onLeaveRoom(room.pin)}
+            className="w-full text-center py-2 text-xs text-zinc-500 hover:text-red-400 transition-colors mt-2"
+          >
+            Sair desta sala
+          </button>
         )}
       </div>
     </div>

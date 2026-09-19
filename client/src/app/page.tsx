@@ -11,6 +11,7 @@ import { AudioSpeakerPlayer } from '../components/AudioSpeakerPlayer';
 export default function Home() {
   const {
     connected,
+    connectingSeconds,
     isMissingServerUrl,
     room,
     currentPlayer,
@@ -21,6 +22,7 @@ export default function Home() {
     showToast,
     createRoom,
     joinRoom,
+    leaveRoom,
     claimSpeaker,
     startGame,
     searchYouTube,
@@ -29,7 +31,8 @@ export default function Home() {
     startSpeakerPlayback,
     submitGuess,
     nextRound,
-    rematch
+    rematch,
+    reconnectServer
   } = useGameSocket();
 
   const handleCopyPin = (pin: string) => {
@@ -65,14 +68,19 @@ export default function Home() {
         {room && (
           <header className="relative z-10 flex items-center justify-between pb-3 border-b border-white/5 text-xs text-zinc-400">
             <span className="font-mono tracking-wide text-emerald-400 font-semibold flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-ping'}`}></span>
               SALA #{room.pin}
             </span>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              {!connected && (
+                <span className="text-[10px] bg-amber-500/15 text-amber-400 font-mono px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                  Reconectando...
+                </span>
+              )}
               {room.status !== 'LOBBY' && room.status !== 'GAME_OVER' && (
                 <span className="bg-white/5 px-2.5 py-1 rounded-full text-zinc-300 font-medium text-[11px]">
-                  Rodada <strong className="text-white">{room.round}</strong> de {room.totalRounds}
+                  Rodada <strong className="text-white">{room.round}</strong>/{room.totalRounds}
                 </span>
               )}
               {isSpeaker && (
@@ -80,6 +88,15 @@ export default function Home() {
                   Caixa
                 </span>
               )}
+              {/* Botão Sair da Sala */}
+              <button
+                onClick={() => leaveRoom(room.pin)}
+                className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-[11px] font-semibold border border-red-500/20 transition-all flex items-center gap-1 active:scale-95"
+                title="Sair da sala"
+              >
+                <span>🚪</span>
+                <span>Sair</span>
+              </button>
             </div>
           </header>
         )}
@@ -95,76 +112,130 @@ export default function Home() {
           />
         )}
 
-        {/* Renderização Condicional de Telas por Estado da Sala */}
-        <div className="relative z-10 flex-1 flex flex-col my-auto py-2">
-          {(!room || room.status === 'LOBBY') && (
-            <LobbyView
-              room={room}
-              currentPlayer={currentPlayer}
-              onCreateRoom={createRoom}
-              onJoinRoom={joinRoom}
-              onClaimSpeaker={claimSpeaker}
-              onStartGame={startGame}
-              onCopyPin={handleCopyPin}
-            />
-          )}
-
-          {room?.status === 'MASTER_CHOOSING' && (
-            <MasterChoosingView
-              room={room}
-              currentPlayer={currentPlayer}
-              onSearchYouTube={searchYouTube}
-              onFetchLyrics={fetchLyrics}
-              onSelectTrack={selectTrack}
-              onShowToast={showToast}
-            />
-          )}
-
-          {room?.status === 'WAITING_SPEAKER_TRIGGER' && (
-            <div className="flex flex-col items-center justify-center flex-1 text-center py-6 animate-in fade-in">
-              <div className="w-20 h-20 rounded-full bg-[#18181c] border-2 border-emerald-500/20 flex items-center justify-center mb-5 text-3xl animate-pulse">
-                🔊
+        {/* Efeito de Loading: Servidor em Hibernação (Render Free Tier) */}
+        {!room && !connected && !isMissingServerUrl && connectingSeconds >= 1 ? (
+          <div className="relative z-20 flex-1 flex flex-col items-center justify-center text-center px-3 py-6 animate-in fade-in duration-300">
+            {/* Vinil Girando com Aura */}
+            <div className="relative mb-6">
+              <div className="w-24 h-24 rounded-full bg-[#161616] border-2 border-white/10 shadow-[0_0_35px_rgba(30,215,96,0.2)] flex items-center justify-center animate-spin-slow">
+                <div className="w-9 h-9 rounded-full bg-[#831843] border border-pink-400/30 flex items-center justify-center">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#121212] border border-white/20" />
+                </div>
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">Engatilhando na Caixa de Som...</h3>
-              <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
-                {isSpeaker
-                  ? 'Toque no botão de confirmação para soltar o som no Bluetooth da sala.'
-                  : 'Aguardando o jogador da Caixa de Som autorizar a reprodução do áudio.'}
-              </p>
+              <span className="absolute top-0 right-0 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
             </div>
-          )}
 
-          {room?.status === 'ROUND_PLAYING' && (
-            <GuessingView
-              room={room}
-              currentPlayer={currentPlayer}
-              roundTiming={roundTiming}
-              onSubmitGuess={submitGuess}
-              onShowToast={showToast}
-            />
-          )}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-semibold mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Despertando Servidor
+            </div>
 
-          {room?.status === 'ROUND_REVEAL' && (
-            <RevealView
-              room={room}
-              currentPlayer={currentPlayer}
-              results={lastResults}
-              onNextRound={nextRound}
-            />
-          )}
+            <h2 className="text-lg font-extrabold text-white mb-2 tracking-tight">
+              Acordando o Vinyl Lounge...
+            </h2>
 
-          {room?.status === 'GAME_OVER' && (
-            <GameOverView
-              room={room}
-              currentPlayer={currentPlayer}
-              onRematch={rematch}
-            />
-          )}
-        </div>
+            <p className="text-xs text-zinc-400 max-w-[260px] leading-relaxed mb-5">
+              Servidores gratuitos no Render entram em repouso após 15 min de inatividade e levam cerca de{' '}
+              <strong className="text-zinc-200">30 a 50 segundos</strong> para acordar. Já estamos iniciando!
+            </p>
+
+            {/* Barra de Progresso Estimada */}
+            <div className="w-full max-w-[240px] bg-[#181818] p-3 rounded-2xl border border-white/5 shadow-inner mb-4">
+              <div className="flex items-center justify-between text-[11px] font-mono mb-2">
+                <span className="text-zinc-500">Conectando</span>
+                <span className="text-emerald-400 font-bold">{connectingSeconds}s</span>
+              </div>
+              <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${Math.min(98, Math.max(10, (connectingSeconds / 45) * 100))}%` }}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={reconnectServer}
+              className="text-xs text-zinc-400 hover:text-white underline underline-offset-4 decoration-zinc-600 hover:decoration-white transition-all py-1"
+            >
+              Forçar tentativa agora ↻
+            </button>
+          </div>
+        ) : (
+          /* Renderização Condicional de Telas por Estado da Sala */
+          <div className="relative z-10 flex-1 flex flex-col my-auto py-2">
+            {(!room || room.status === 'LOBBY') && (
+              <LobbyView
+                room={room}
+                currentPlayer={currentPlayer}
+                onCreateRoom={createRoom}
+                onJoinRoom={joinRoom}
+                onClaimSpeaker={claimSpeaker}
+                onStartGame={startGame}
+                onCopyPin={handleCopyPin}
+                onLeaveRoom={leaveRoom}
+              />
+            )}
+
+            {room?.status === 'MASTER_CHOOSING' && (
+              <MasterChoosingView
+                room={room}
+                currentPlayer={currentPlayer}
+                onSearchYouTube={searchYouTube}
+                onFetchLyrics={fetchLyrics}
+                onSelectTrack={selectTrack}
+                onShowToast={showToast}
+              />
+            )}
+
+            {room?.status === 'WAITING_SPEAKER_TRIGGER' && (
+              <div className="flex flex-col items-center justify-center flex-1 text-center py-6 animate-in fade-in">
+                <div className="w-20 h-20 rounded-full bg-[#18181c] border-2 border-emerald-500/20 flex items-center justify-center mb-5 text-3xl animate-pulse">
+                  🔊
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">Engatilhando na Caixa de Som...</h3>
+                <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
+                  {isSpeaker
+                    ? 'Toque no botão de confirmação para soltar o som no Bluetooth da sala.'
+                    : 'Aguardando o jogador da Caixa de Som autorizar a reprodução do áudio.'}
+                </p>
+              </div>
+            )}
+
+            {room?.status === 'ROUND_PLAYING' && (
+              <GuessingView
+                room={room}
+                currentPlayer={currentPlayer}
+                roundTiming={roundTiming}
+                onSubmitGuess={submitGuess}
+                onShowToast={showToast}
+              />
+            )}
+
+            {room?.status === 'ROUND_REVEAL' && (
+              <RevealView
+                room={room}
+                currentPlayer={currentPlayer}
+                results={lastResults}
+                onNextRound={nextRound}
+              />
+            )}
+
+            {room?.status === 'GAME_OVER' && (
+              <GameOverView
+                room={room}
+                currentPlayer={currentPlayer}
+                onRematch={rematch}
+              />
+            )}
+          </div>
+        )}
 
         {/* Rodapé Minimalista */}
         <footer className="relative z-10 pt-2 text-center text-[10px] text-zinc-500 font-mono">
-          LOUNGE DE DISCOS • {connected ? 'CONECTADO' : 'CONECTANDO...'}
+          LOUNGE DE DISCOS • {connected ? 'CONECTADO' : `ACORDANDO SERVIDOR (${connectingSeconds}s)...`}
         </footer>
 
         {/* Toast Notifier */}

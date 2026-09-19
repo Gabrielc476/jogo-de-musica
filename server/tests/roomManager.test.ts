@@ -112,4 +112,25 @@ describe('RoomManager', () => {
     expect(room.players[1].score).toBe(0);
     expect(room.players).toHaveLength(2);
   });
+
+  it('deve remover jogador ao sair da sala e transferir host se necessário', () => {
+    const room = manager.createRoom('socket-1', 'Gabriel');
+    manager.joinRoom(room.pin, 'socket-2', 'Renata');
+
+    expect(room.players).toHaveLength(2);
+    expect(room.hostId).toBe('socket-1');
+
+    // Host sai da sala -> posse é transferida
+    const updated = manager.leaveRoom(room.pin, 'socket-1');
+    expect(updated).not.toBeNull();
+    expect(updated?.players).toHaveLength(1);
+    expect(updated?.players[0].nickname).toBe('Renata');
+    expect(updated?.hostId).toBe('socket-2');
+    expect(updated?.players[0].isHost).toBe(true);
+
+    // Último jogador sai da sala -> sala é removida da memória
+    const finalRoom = manager.leaveRoom(room.pin, 'socket-2');
+    expect(finalRoom).toBeNull();
+    expect(manager.getRoom(room.pin)).toBeUndefined();
+  });
 });

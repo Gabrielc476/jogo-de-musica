@@ -14,6 +14,10 @@ await fastify.register(fastifyCors, {
   credentials: true
 });
 
+fastify.get('/', async () => {
+  return { status: 'ok', service: 'Vinyl Lounge Server', uptime: process.uptime() };
+});
+
 fastify.get('/health', async () => {
   return { status: 'ok', service: 'Vinyl Lounge Server' };
 });
@@ -91,6 +95,18 @@ io.on('connection', (socket) => {
       }
     } catch {
       // Ignora erro de reconexão silenciosa
+    }
+  });
+
+  socket.on('room:leave', ({ pin, persistentId }) => {
+    try {
+      socket.leave(pin);
+      const updated = roomManager.leaveRoom(pin, socket.id, persistentId);
+      if (updated) {
+        io.to(pin).emit('room:sync', { room: updated });
+      }
+    } catch (err: any) {
+      // Ignora erro ao sair
     }
   });
 
