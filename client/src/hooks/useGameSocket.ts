@@ -175,10 +175,10 @@ export function useGameSocket() {
     return new Promise((resolve) => {
       if (!socketRef.current) return resolve([]);
 
-      // Timeout defensivo de 4.5s no cliente para nunca travar a UI
+      // Timeout defensivo de 11s no cliente (casando com o timeout de 10s do backend)
       const timer = setTimeout(() => {
         resolve([]);
-      }, 4500);
+      }, 11000);
 
       socketRef.current.emit('youtube:search', { query }, (results) => {
         clearTimeout(timer);

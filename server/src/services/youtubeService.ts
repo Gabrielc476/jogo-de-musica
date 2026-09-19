@@ -294,11 +294,11 @@ export class YouTubeService {
       return catalogMatches;
     }
 
-    // 3. Busca textual externa via yt-search com TIMEOUT ESTRITO de 3.5 segundos
+    // 3. Busca textual externa via yt-search com TIMEOUT de 10 segundos
     try {
       const searchPromise = ytSearch(trimmed);
       const timeoutPromise = new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 3500)
+        setTimeout(() => reject(new Error('TIMEOUT')), 10000)
       );
 
       const res = (await Promise.race([searchPromise, timeoutPromise])) as any;
